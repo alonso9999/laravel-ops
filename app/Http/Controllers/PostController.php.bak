@@ -1,0 +1,265 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use Illuminate\Http\Request;
+
+use App\Http\Requests;
+use App\Http\Controllers\Controller;
+
+//use App\Models\Post;
+use DB;
+
+class PostController extends Controller
+{
+        /**
+         * 显示文章列表.
+         *
+         * @return Response
+         */
+        public function index()
+        {
+            $host_list = DB::table('cmdb_list_all')
+                ->select('cmdb_list_all.id','cmdb_hosts.hosts','cmdb_ip.ip','cmdb_owner.owner')
+                ->leftJoin('cmdb_hosts','cmdb_list_all.hosts_id','=','cmdb_hosts.id')
+                ->leftJoin('cmdb_ip','cmdb_list_all.ip_id','=','cmdb_ip.id')
+                ->leftJoin('cmdb_owner','cmdb_list_all.owner_id','=','cmdb_owner.id')
+                ->simplePaginate(10);
+            $showUrl = route('post.index');
+            $createUrl = route('post.create');
+            $getipUrl = route('post.getip');
+            $getownerUrl = route('post.getowner');
+            $postUrl = Route('post.search'); 
+            $csrf_field =  csrf_field();           
+            return view('post.show_all_list',[
+            'hosts' => $host_list,
+            'showUrl' => $showUrl,
+            'createUrl' => $createUrl,
+            'getipUrl' => $getipUrl,
+            'getownerUrl' => $getownerUrl,
+            'postUrl' => $postUrl,
+            'csrf_field' =>$csrf_field
+            ]);
+        }
+
+        /**
+         * 创建新文章表单页面
+         *
+         * @return Response
+         */
+        public function create()
+        {
+            //
+            $postUrl = route('post.store');
+            $showUrl = route('post.index');
+            $csrf_field = csrf_field(); 
+            return view('post.post_create',[
+            'showUrl' => $showUrl,
+            'postUrl' => $postUrl,
+            'csrf_field' =>$csrf_field
+            ]);      
+
+        }
+
+        /**
+         * 将新创建的文章存储到存储器
+         *
+         * @param Request $request
+         * @return Response
+         */
+        public function store(Request $request)
+        {
+            //
+            $hosts = $request->input('hosts');
+            $ip = $request->input('ip');
+            $owner = $request->input('owner');
+            $list = ['hosts'=>trim($hosts),'ip'=>trim($ip),'owner'=>trim($owner)];
+            $all_data=array();
+            //数据如果存在，则返回id，如果不存在，存入数据再返回id
+            foreach ($list as $key=>$value){
+                $id = DB::table('cmdb_'.$key)->select('id')->where($key,$value)->get();
+                 if($id->isEmpty()){
+                    $id = DB::table('cmdb_'.$key)->insertGetId(
+                        [$key=>$value]
+                    );
+                }else{
+                    $id = $id[0]->id;
+                }
+                $all_data[$key.'_id']=$id;                            
+            }
+            $host_id = DB::table('cmdb_list_all')->select('hosts_id')->where('hosts_id',$all_data['hosts_id'])->get();
+            if($host_id->isEmpty()){
+                $list_id = DB::table('cmdb_list_all')->insertGetId($all_data); 
+                return redirect()->route('post.show',$list_id);             
+            }else{
+                return "Duplicate data";
+            }
+            
+            
+            //$list_id = DB::table('cmdb_list_all')->insertGetId($all_data);
+            /*
+            $hosts_id = DB::table('cmdb_hosts')->select('id')->where('hosts',$hosts)->get();
+            if($hosts_id->isEmpty()){
+                $hosts_id = DB::table('cmdb_hosts')->insertGetId(
+                    ['hosts'=>$hosts]
+                );
+            }else{
+                $hosts_id = $hosts_id[0]->id;
+            }
+            */
+        }
+
+
+        /**
+         * 显示指定文章
+         *
+         * @param int $id
+         * @return Response
+         */
+        public function show($id)
+        {
+            //
+            $list = DB::table('cmdb_list_all')
+                ->where('cmdb_list_all.id',$id)
+                ->leftJoin('cmdb_hosts','cmdb_list_all.hosts_id','=','cmdb_hosts.id')
+                ->leftJoin('cmdb_ip','cmdb_list_all.ip_id','=','cmdb_ip.id')
+                ->leftJoin('cmdb_owner','cmdb_list_all.owner_id','=','cmdb_owner.id')
+                ->get();
+            if($list->isEmpty()){
+                return 'Nothing Found!';
+            }else{
+                $editUrl = route('post.edit',$id);
+                $showUrl = route('post.index');               
+                /*             
+                $html = <<<DETAIL
+                    <h3>Host: {$list[0]->hosts}</h3>
+                    <p>IP: {$list[0]->ip}</p>
+                    <p>Owner: {$list[0]->owner}</p>
+                    <p>
+                    <a href="{$editUrl}">Edit</a>
+                    </p>
+DETAIL;
+                    return $html;
+                */
+                return view('post.show_one',['list' => $list, 'showUrl' => $showUrl,'editUrl' => $editUrl]);                    
+            }
+            
+        }
+
+        /**
+         * 显示编辑指定文章的表单页面
+         *
+         * @param int $id
+         * @return Response
+         */
+        public function edit($id)
+        {
+            //
+            $list = DB::table('cmdb_list_all')
+                ->where('cmdb_list_all.id',$id)
+                ->leftJoin('cmdb_hosts','cmdb_list_all.hosts_id','=','cmdb_hosts.id')
+                ->leftJoin('cmdb_ip','cmdb_list_all.ip_id','=','cmdb_ip.id')
+                ->leftJoin('cmdb_owner','cmdb_list_all.owner_id','=','cmdb_owner.id')
+                ->get();
+             if($list->isEmpty()){
+                return 'Nothing Found!';
+            }else{
+                $postUrl = route('post.update',$id);
+                $showUrl = route('post.index');  
+                $csrf_field = csrf_field();
+                return view('post.update',['list' => $list,'showUrl' => $showUrl,'postUrl' => $postUrl,'csrf_field' =>$csrf_field]);  
+                /*
+                $html = <<<UPDATE
+                <form action="$postUrl" method="POST">
+                $csrf_field
+                <input type="hidden" name="_method" value="PUT"/>
+                Host:{$list[0]->hosts}<br/><br/>
+                IP:<input type="text" name="ip" value="{$list[0]->ip}"><br/><br/>
+                Owner:<input type="text" name="owner" value="{$list[0]->owner}"><br/><br/>
+                <input type="submit" value="submit"/>
+                </from>
+UPDATE;
+                return $html;
+                */
+            }           
+        }
+
+        /**
+         * 在存储器中更新指定文章
+         *
+         * @param Request $request
+         * @param int $id
+         * @return Response
+         */
+        public function update(Request $request, $id)
+        {
+            //
+            $ip = $request->input('ip');
+            $owner = $request->input('owner');
+            $list = ['ip'=>trim($ip),'owner'=>trim($owner)];
+            $all_data=array();
+            //数据如果存在，则返回id，如果不存在，存入数据再返回id
+            foreach ($list as $key=>$value){
+                $hosts_id = DB::table('cmdb_'.$key)->select('id')->where($key,$value)->get();
+                 if($hosts_id->isEmpty()){
+                    $hosts_id = DB::table('cmdb_'.$key)->insertGetId(
+                        [$key=>$value]
+                    );
+                }else{
+                    $hosts_id = $hosts_id[0]->id;
+                }
+                $all_data[$key.'_id']=$hosts_id;                            
+            }
+            //dd($id,$all_data);
+            $affected = Db::table('cmdb_list_all')->where('id',$id)->update($all_data);
+            return redirect()->route('post.index');  
+        }
+
+        /**
+         * 从存储器中移除指定文章
+         *
+         * @param int $id
+         * @return Response
+         */
+        public function destroy($id)
+        {
+            //
+            return 'destroy';
+        }
+        public function getip()
+        {
+            //
+            $ip_list = DB::table('cmdb_ip')->simplePaginate(10);
+            $showUrl = route('post.index'); 
+            return view('post.get_ip',['list' => $ip_list, 'showUrl' => $showUrl]);  
+        }
+        public function getowner()
+        {
+            //
+            $ip_list = DB::table('cmdb_owner')->simplePaginate(10);
+            $showUrl = route('post.index'); 
+            return view('get_ip',['list' => $ip_list, 'showUrl' => $showUrl]);  
+        }
+        public function search(Request $request)
+        {
+            $hosts = $request->input('hosts');
+            $host_list = DB::table('cmdb_list_all')
+                ->select('cmdb_list_all.id','cmdb_hosts.hosts','cmdb_ip.ip','cmdb_owner.owner')
+                ->where('cmdb_hosts.hosts','like','%'.$hosts.'%')
+                ->leftJoin('cmdb_hosts','cmdb_list_all.hosts_id','=','cmdb_hosts.id')
+                ->leftJoin('cmdb_ip','cmdb_list_all.ip_id','=','cmdb_ip.id')
+                ->leftJoin('cmdb_owner','cmdb_list_all.owner_id','=','cmdb_owner.id')
+                ->get();
+            $showUrl = route('post.index');
+            $createUrl = route('post.create');
+            $getipUrl = route('post.getip');
+            $getownerUrl = route('post.getowner');            
+            return view('post.search_hosts',[
+            'hosts' => $host_list,
+            'showUrl' => $showUrl,
+            'createUrl' => $createUrl,
+            'getipUrl' => $getipUrl,
+            'getownerUrl' => $getownerUrl,         
+            ]);
+        }
+}
